@@ -1,0 +1,53 @@
+# 合影名单采集 · Group Photo Namer
+
+> 自部署的 Web 应用：上传一张集体合影，浏览器端自动框出所有人脸；把分享链接发到群里，每个人在手机上打开、拖动缩放照片找到自己、点一下自己的脸填写姓名；管理员随时导出「按第几排第几位排序的名单」「未填写人员名单」和「完整操作日志」。零 npm 依赖，只用 Node.js ≥ 22 内置的 http + node:sqlite。
+
+## 核心信息
+
+- 用途：集体合影的人员姓名采集与位置认领（毕业合影、培训班合影、班级照、年会合影、会议合影等）
+- 技术栈：Node.js 22（内置 `http` + `node:sqlite`）、原生 HTML/CSS/JS 单页前端、SQLite（WAL）、face-api.js 0.22.2（CDN 加载模型）
+- 依赖数量：0 个 npm 包，无需 `npm install`
+- 人脸识别位置：浏览器本地，照片不会上传到任何第三方识别服务
+- 许可证：MIT
+- 启动命令：`node --experimental-sqlite server.js`（默认端口 8360，可用 `PORT` 覆盖）
+- 管理员码：首次启动随机生成并打印在控制台，可用环境变量 `ADMIN_CODE` 预设
+
+## 主要能力
+
+- 多项目：一次部署可承载任意多个合影项目，照片、人脸框、名单、日志按项目完全隔离
+- 人脸框：自动识别 + 手动新增 / 拖动 / 四角缩放 / 删除，虚线框不遮挡人脸，框内显示「排-位」迷你编号
+- 手机端：单指拖动平移、双指捏合缩放、轻点人脸弹出填写框（位移 <14px 且 <0.8s 才算点击）
+- 权限：管理员（上传合影、识别、调框、名单管理、导出）／成员（凭姓名+验证码登录，只能填空位或自己填过的位置）
+- 名单：支持粘贴批量生成、CSV 导入（提供模板下载）、表格内手动新增与修改；允许重名（验证码不同即可）
+- 导出：合影名单（排/位次/姓名/填写人/时间）、未填写人员、待填写位置、验证码清单、操作日志、标注图 PNG
+- 分享：每个项目有 `/p/:id` 分享链接，服务端渲染 Open Graph / Twitter Card 标签，微信、QQ、飞书内显示标题+描述+预览图
+- 安全：SQLite WAL 实时落盘、4 秒增量轮询同步、完整操作日志、同名成员互不覆盖、同 IP 每分钟 15 次登录限流
+
+## 文件结构
+
+- [server.js](https://github.com/Carlingwang/group-photo-namer/blob/main/server.js)：全部后端逻辑（路由、SQLite、分享页服务端渲染、导出、限流）
+- [public/index.html](https://github.com/Carlingwang/group-photo-namer/blob/main/public/index.html)：单页前端（界面、人脸识别、画布交互、触屏手势）
+- [public/icon.svg](https://github.com/Carlingwang/group-photo-namer/blob/main/public/icon.svg)：默认应用图标
+- [public/cover.png](https://github.com/Carlingwang/group-photo-namer/blob/main/public/cover.png)：默认分享封面（1200×630）
+- [README.md](https://github.com/Carlingwang/group-photo-namer/blob/main/README.md)：完整说明、部署步骤、API 文档、FAQ
+- [LICENSE](https://github.com/Carlingwang/group-photo-namer/blob/main/LICENSE)：MIT
+
+## API 摘要
+
+- `POST /api/login` — `{name, code, projectId?}` → token；管理员码登录为管理员，否则校验成员验证码
+- `GET/POST/PUT/DELETE /api/projects[/:id]` — 项目列表与增删改
+- `POST /api/session/project` — 管理员切换当前项目
+- `GET /p/:id` — 分享落地页（服务端渲染 OG 标签后跳转 `/?p=:id`）
+- `GET/POST/DELETE /api/photo` — 合影照片
+- `POST /api/boxes/bulk`、`POST/PUT/DELETE /api/box[/:id]` — 人脸框批量写入与增删改
+- `PUT /api/box/:id/name` — 填写姓名
+- `GET/POST /api/codes`、`POST /api/codes/add`、`PUT/DELETE /api/codes/:id`、`POST /api/codes/import` — 名单与验证码
+- `GET /api/export/names|pending|unnamed|codes|logs` — 五类导出（CSV）
+- `GET /api/state?v=<version>` — 项目状态与增量轮询
+
+完整参数见 [README.md 的 API 文档](https://github.com/Carlingwang/group-photo-namer/blob/main/README.md#api-文档)。
+
+## 不适合的场景
+
+- 需要跨设备人脸识别「这是谁」的自动点名（本项目只框出人脸，姓名由本人填写）
+- 需要把照片托管给第三方服务（本项目设计为自部署、数据留在自己服务器）
