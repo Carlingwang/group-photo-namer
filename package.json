@@ -1,0 +1,40 @@
+{
+  "name": "group-photo-namer",
+  "version": "3.0.0",
+  "description": "合影名单采集系统 · 通用模板：上传合影、浏览器端人脸识别框人、按位置收集姓名、多项目、一键导出名单（零依赖 Node.js）",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node --experimental-sqlite server.js",
+    "dev": "PORT=8360 node --experimental-sqlite server.js"
+  },
+  "keywords": [
+    "face-detection",
+    "face-api.js",
+    "face-recognition",
+    "group-photo",
+    "class-photo",
+    "photo-roster",
+    "roster",
+    "name-collection",
+    "集体合影",
+    "合影名单",
+    "姓名采集",
+    "照片认人",
+    "wechat-share",
+    "open-graph",
+    "sqlite",
+    "nodejs",
+    "zero-dependency",
+    "self-hosted"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/<your-github-username>/group-photo-namer.git"
+  }
+}

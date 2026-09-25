@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>合影名单采集</title>
+<meta name="description" content="上传合影、自动框出人脸、按位置收集姓名并导出名单的通用工具">
+<meta property="og:type" content="website">
+<meta property="og:title" content="合影名单采集">
+<meta property="og:description" content="上传合影、自动框出人脸、按位置收集姓名并导出名单">
+<meta property="og:image" content="/cover.png">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<style>
+  :root{
+    --green:#0b5c3f; --green-dark:#084a33; --green-light:#e8f3ee; --green-border:#bcd8cc;
+    --red:#d43a3a; --amber:#c07c10; --ink:#1f2a26; --muted:#6b7a74;
+    --card:#ffffff; --bg:#f5f8f6; --line:#d9e3de;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:"PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink); min-height:100vh;}
+  button{font-family:inherit; cursor:pointer;}
+
+  /* ===== 头部 ===== */
+  header{background:linear-gradient(135deg,var(--green) 0%,var(--green-dark) 100%); padding:14px 28px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; border-bottom:3px solid #063825;}
+  header img.logo{height:44px; width:44px; object-fit:contain; padding:4px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.25); border-radius:10px;}
+  header .titles h1{font-size:18px; color:#fff; letter-spacing:.5px; line-height:1.3;}
+  header .titles p{font-size:12px; color:rgba(255,255,255,.75); margin-top:3px;}
+  header .spacer{flex:1;}
+  .badge{display:inline-flex; align-items:center; gap:6px; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.12); color:#fff; border-radius:20px; padding:5px 14px; font-size:13px;}
+  .badge.role-admin{background:#c07c10; border-color:#e0a83a;}
+  header .btn{border-color:rgba(255,255,255,.5); color:#fff; background:transparent;}
+  header .btn:hover{background:rgba(255,255,255,.15);}
+  header select{border:1px solid rgba(255,255,255,.45); background:rgba(255,255,255,.12); color:#fff; border-radius:8px; padding:7px 10px; font-size:13px; font-family:inherit; max-width:220px;}
+  header select option{color:#1f2a26;}
+
+  /* ===== 布局 ===== */
+  main{display:flex; gap:16px; padding:16px 28px; align-items:flex-start; flex-wrap:wrap;}
+  .panel{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px;}
+  .left{flex:2 1 620px; min-width:340px;}
+  .right{flex:1 1 330px; min-width:300px; position:sticky; top:16px;}
+  .panel h2{font-size:15px; color:var(--green); border-bottom:1px solid var(--line); padding-bottom:10px; margin-bottom:12px; display:flex; align-items:center; gap:8px;}
+  .panel h2 .count{margin-left:auto; font-size:12px; color:var(--muted); font-weight:normal;}
+  .sub-h{font-size:13px; color:var(--green); margin:16px 0 8px; font-weight:600;}
+
+  /* ===== 按钮 ===== */
+  .toolbar{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;}
+  .btn{border:1px solid var(--green); background:#fff; color:var(--green); border-radius:8px; padding:8px 14px; font-size:13px; transition:all .15s;}
+  .btn:hover{background:var(--green-light);}
+  .btn.primary{background:var(--green); color:#fff;}
+  .btn.primary:hover{background:#0a4f36;}
+  .btn.danger{border-color:var(--red); color:var(--red);}
+  .btn.danger:hover{background:#fbecec;}
+  .btn:disabled{opacity:.45; cursor:not-allowed;}
+
+  /* ===== 模式切换（调整 / 新增）===== */
+  .seg{display:inline-flex; border:1px solid var(--green); border-radius:8px; overflow:hidden;}
+  .seg .btn{border:none; border-radius:0; padding:8px 14px;}
+  .seg .btn + .btn{border-left:1px solid var(--green-border);}
+  .seg .btn.on{background:var(--green); color:#fff; font-weight:600;}
+  .seg .btn.add{color:#c07c10; border-color:#c07c10;}
+  .seg .btn.add:hover{background:#fdf3e4;}
+  .seg .btn.on.add{background:#c07c10; border-color:#c07c10; color:#fff;}
+  .modetip{display:none; align-items:center; gap:8px; font-size:12px; padding:8px 12px; border-radius:8px; margin-bottom:10px; line-height:1.6;}
+  .modetip.show{display:flex;}
+  .modetip.add{background:#fdf3e4; border:1px solid #f0d9b0; color:#8a5810;}
+  .modetip.sel{background:var(--green-light); border:1px solid var(--green-border); color:var(--green);}
+  .modetip b{font-weight:700;}
+  .modetip .mt-close{margin-left:auto; border:1px solid currentColor; background:transparent; color:inherit; border-radius:6px; padding:4px 10px; font-size:12px;}
+
+  /* ===== 画布 ===== */
+  #stage{border:1px dashed var(--green-border); border-radius:10px; background:#fafcfb; min-height:280px; display:flex; align-items:center; justify-content:center; overflow:hidden;}
+  #stage .placeholder{text-align:center; color:var(--muted); font-size:14px; line-height:2; padding:40px 20px;}
+  html,body{overscroll-behavior:none;}
+  #scroll{display:none; width:100%; height:100%; max-height:75vh; overflow:auto; align-self:stretch; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; background:#f4f7f4;}
+  #cv{display:block; border-radius:4px; touch-action:none; margin:0 auto;
+      -webkit-user-select:none; user-select:none;
+      -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent;}
+  #cv.panning{cursor:grabbing;}
+  #cv.addmode{cursor:crosshair;}
+  .zoombar{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;}
+  .zoombar .zval{display:inline-flex; align-items:center; justify-content:center; min-width:56px; border:1px solid var(--line); border-radius:8px; padding:7px 10px; font-size:13px; color:var(--green); font-weight:600; background:#fff;}
+  .zoombar .ztip{font-size:11px; color:var(--muted);}
+  #statusBar{font-size:12px; color:var(--muted); margin-top:10px; min-height:18px;}
+
+  /* ===== 名单 ===== */
+  .stats{display:flex; gap:8px; margin-bottom:12px;}
+  .stat{flex:1; border:1px solid var(--line); border-radius:8px; padding:8px 6px; text-align:center;}
+  .stat b{display:block; font-size:19px; color:var(--green);}
+  .stat.warn b{color:var(--red);}
+  .stat span{font-size:11px; color:var(--muted);}
+  #faceList{max-height:46vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px;}
+  .face-item{display:flex; gap:10px; align-items:center; border:1px solid var(--line); border-radius:10px; padding:8px; cursor:pointer; background:#fff;}
+  .face-item.selected{border-color:var(--green); background:var(--green-light); box-shadow:0 0 0 1px var(--green);}
+  .face-item .thumb{width:52px; height:52px; border-radius:8px; border:1px solid var(--line); object-fit:cover; background:#eef2f0; flex-shrink:0;}
+  .face-item .meta{flex:1; min-width:0;}
+  .face-item .num{font-size:11px; color:var(--muted);}
+  .face-item input{width:100%; border:1px solid var(--line); border-radius:6px; padding:5px 8px; font-size:14px; margin-top:3px;}
+  .face-item input:focus{outline:none; border-color:var(--green);}
+  .face-item input:disabled{background:#f2f5f3; color:var(--muted);}
+  .face-item .by{font-size:10px; color:var(--muted); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .face-item .del{border:none; background:none; color:var(--red); font-size:16px; padding:4px;}
+  .exports{display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;}
+
+  /* ===== 验证码管理 ===== */
+  #namesInput{width:100%; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:13px; min-height:64px; resize:vertical; font-family:inherit;}
+  #codeTable{width:100%; border-collapse:collapse; font-size:12px; margin-top:8px; max-height:260px; display:block; overflow-y:auto;}
+  #codeTable th,#codeTable td{border:1px solid var(--line); padding:4px 6px; text-align:left;}
+  #codeTable th{background:var(--green-light); color:var(--green); position:sticky; top:0;}
+  #codeTable input{width:100%; border:1px solid transparent; background:transparent; border-radius:5px; padding:3px 5px; font-size:12px; font-family:inherit;}
+  #codeTable input:hover{border-color:var(--line);}
+  #codeTable input:focus{outline:none; border-color:var(--green); background:#fff;}
+  #codeTable .code{font-family:Menlo,monospace; font-weight:600; color:var(--amber);}
+  #codeTable .used{color:var(--green);}
+  #codeTable .unused{color:var(--muted);}
+  #codeTable button{border:none; background:none; color:var(--red); font-size:13px;}
+  .addrow{display:flex; gap:6px; margin-top:8px;}
+  .addrow input{flex:1; border:1px solid var(--line); border-radius:7px; padding:6px 9px; font-size:13px; font-family:inherit; min-width:0;}
+  .addrow input:focus{outline:none; border-color:var(--green);}
+
+  /* ===== 登录门 ===== */
+  #gate{position:fixed; inset:0; background:linear-gradient(160deg,#f5f8f6 0%,#e8f3ee 100%); z-index:100; display:none; align-items:center; justify-content:center; padding:20px; overflow:auto;}
+  #gate .card{background:#fff; border:1px solid var(--line); border-radius:16px; width:420px; max-width:100%; text-align:center; box-shadow:0 8px 40px rgba(11,92,63,.12); overflow:hidden;}
+  #gate .card .top{background:linear-gradient(135deg,var(--green),var(--green-dark)); padding:22px 30px;}
+  #gate .card .top img{height:44px; width:44px; object-fit:contain; padding:4px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.25); border-radius:10px;}
+  #gate .card .top h1{font-size:17px; color:#fff; line-height:1.7; margin-top:10px;}
+  #gate .card .top p{font-size:11px; color:rgba(255,255,255,.7); margin-top:4px;}
+  #gate .body{padding:22px 34px 28px;}
+  #gate .field{text-align:left; margin-bottom:12px;}
+  #gate label{display:block; font-size:12px; color:var(--muted); margin-bottom:5px;}
+  #gate input{width:100%; border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:14px;}
+  #gate input:focus{outline:none; border-color:var(--green);}
+  #gate .err{color:var(--red); font-size:12px; min-height:18px; margin:6px 0 10px;}
+  #gate .btn{width:100%; padding:11px; font-size:15px;}
+  #gate .hint{font-size:11px; color:var(--muted); margin-top:12px;}
+  .proj-item{display:flex; align-items:center; gap:10px; text-align:left; border:1px solid var(--line); border-radius:10px; padding:9px 12px; margin-bottom:8px; cursor:pointer; background:#fff;}
+  .proj-item:hover{border-color:var(--green); background:var(--green-light);}
+  .proj-item img{width:34px; height:34px; object-fit:contain; border-radius:7px; border:1px solid var(--line); background:#fff; flex-shrink:0;}
+  .proj-item .pn{font-size:14px; font-weight:600;}
+  .proj-item .pd{font-size:11px; color:var(--muted); margin-top:2px;}
+  .proj-item .go{margin-left:auto; color:var(--green); font-size:13px;}
+  .chip{display:inline-flex; align-items:center; gap:8px; background:var(--green-light); border:1px solid var(--green-border); color:var(--green); border-radius:20px; padding:5px 12px; font-size:13px; margin-bottom:12px;}
+  .chip img{width:24px; height:24px; object-fit:contain; border-radius:5px;}
+  .backlink{font-size:12px; color:var(--muted); display:inline-block; margin-bottom:14px;}
+
+  /* ===== 项目首页（管理员未选项目时） ===== */
+  #projHome{position:fixed; inset:0; background:var(--bg); z-index:95; display:none; align-items:flex-start; justify-content:center; padding:24px 16px; overflow:auto;}
+  #projHome .wrap{width:560px; max-width:100%; background:#fff; border:1px solid var(--line); border-radius:14px; padding:22px 26px;}
+  #projHome h2{font-size:16px; color:var(--green); margin-bottom:6px;}
+  #projHome .sub{font-size:12px; color:var(--muted); margin-bottom:16px;}
+  #projHome .fld{margin-bottom:10px;}
+  #projHome label{display:block; font-size:12px; color:var(--muted); margin-bottom:4px;}
+  #projHome input[type=text]{width:100%; border:1px solid var(--line); border-radius:8px; padding:9px 11px; font-size:14px; font-family:inherit;}
+  #projHome textarea{width:100%; border:1px solid var(--line); border-radius:8px; padding:9px 11px; font-size:13px; font-family:inherit; min-height:56px; resize:vertical;}
+  #projHome input:focus,#projHome textarea:focus{outline:none; border-color:var(--green);}
+
+  /* ===== 弹窗 ===== */
+  .modal{position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:90; display:none; align-items:center; justify-content:center; padding:20px; overflow:auto;}
+  .modal .card{background:#fff; border-radius:14px; padding:24px 28px; width:380px; max-width:100%; border:1px solid var(--line);}
+  .modal h3{color:var(--green); font-size:15px; margin-bottom:14px;}
+  .modal .field{margin-bottom:12px;}
+  .modal label{display:block; font-size:12px; color:var(--muted); margin-bottom:4px;}
+  .modal input[type=text],.modal input[type=password]{width:100%; border:1px solid var(--line); border-radius:8px; padding:9px 11px; font-size:14px;}
+  .modal .row{display:flex; gap:8px; margin-top:16px;}
+  .modal .row .btn{flex:1;}
+  .sharebox{display:flex; gap:6px; margin-top:6px;}
+  .sharebox input{flex:1; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:12px; font-family:inherit; color:var(--muted);}
+  .tip{font-size:11px; color:var(--muted); margin-top:8px; line-height:1.7;}
+
+  .toast{position:fixed; left:50%; bottom:32px; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 22px; border-radius:24px; font-size:13px; z-index:200; opacity:0; transition:opacity .3s; pointer-events:none;}
+
+  @media (max-width: 720px){
+    header{padding:12px 14px; gap:10px;}
+    main{padding:12px; gap:12px;}
+    .left, .right{min-width:100%; flex-basis:100%;}
+    .right{position:static;}
+    #scroll{max-height:58vh;}
+    #faceList{max-height:38vh;}
+    .toolbar{gap:6px;}
+    .toolbar .btn, .zoombar .btn{padding:8px 10px; font-size:12px;}
+    .ztip{flex-basis:100%; font-size:11px; line-height:1.5;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ 登录门 ============ -->
+<div id="gate">
+  <div class="card">
+    <div class="top">
+      <img src="/icon.svg" alt="">
+      <h1>合影名单采集</h1>
+      <p>选择项目 → 输入姓名与验证码</p>
+    </div>
+    <div class="body">
+      <!-- 第一步：选择项目 -->
+      <div id="gateStep1">
+        <label>请选择合影项目</label>
+        <div id="gateProjList" style="margin-top:8px"></div>
+        <button class="btn" id="gateAdminBtn" style="width:100%;margin-top:14px">我是管理员 · 新建 / 管理项目</button>
+        <p class="hint">成员：选择项目后输入姓名与验证码。<br>管理员：点上方按钮，用管理员码进入后可新建和管理项目。</p>
+      </div>
+      <!-- 第二步：姓名 + 验证码 -->
+      <div id="gateStep2" style="display:none">
+        <div class="chip" id="gateProjChip"></div>
+        <a href="#" class="backlink" id="gateBack">← 换个项目</a>
+        <div class="field">
+          <label>姓名（将作为填写人记录）</label>
+          <input id="gateName" placeholder="请输入真实姓名" type="text" name="member_name"
+                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label>验证码（管理员发放）</label>
+          <input id="gateCode" type="text" name="access_code_input" placeholder="请输入验证码"
+                 autocomplete="new-password" autocorrect="off" autocapitalize="characters" spellcheck="false"
+                 data-lpignore="true" data-1p-ignore data-form-type="other">
+        </div>
+        <div class="err" id="gateErr"></div>
+        <button class="btn primary" id="gateBtn">验 证 进 入</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 管理员项目首页 ============ -->
+<div id="projHome">
+  <div class="wrap">
+    <h2>项目管理</h2>
+    <div class="sub">一个部署可以承载多个合影项目，数据互相隔离。选择已有项目进入，或新建项目。</div>
+    <div id="projList"></div>
+    <div style="border-top:1px solid #e6ece9; margin:18px 0 14px"></div>
+    <h2 style="font-size:14px">新建项目</h2>
+    <div class="fld"><label>项目名称（必填，会显示在分享卡片上）</label><input type="text" id="npName" placeholder="例如：2026 届毕业合影"></div>
+    <div class="fld"><label>项目简介（分享时的描述，可留空）</label><textarea id="npDesc" placeholder="例如：请认领自己在合影中的位置并填写姓名"></textarea></div>
+    <div class="fld"><label>项目图标（可选，微信分享时作为预览图，建议正方形）</label><input type="file" id="npIcon" accept="image/*"></div>
+    <div style="margin-top:12px"><button class="btn primary" id="npCreate">创建项目</button></div>
+  </div>
+</div>
+
+<!-- ============ 填写姓名弹窗（触屏优先） ============ -->
+<div class="modal" id="nameModal">
+  <div class="card" style="width:330px">
+    <h3 id="nmTitle">填写姓名</h3>
+    <div style="text-align:center">
+      <canvas id="nmFace" width="220" height="220" style="width:220px;height:220px;border-radius:12px;border:1px solid #d9e3de;background:#eef2f0"></canvas>
+    </div>
+    <div class="field" style="margin-top:14px">
+      <label id="nmLabel">姓名</label>
+      <input id="nmInput" placeholder="请输入姓名" type="text" name="face_name_input"
+             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+             data-lpignore="true" data-1p-ignore style="font-size:16px;padding:12px;text-align:center">
+    </div>
+    <div id="nmBy" style="font-size:11px;color:#6b7a74;min-height:16px;margin-bottom:4px"></div>
+    <div class="row">
+      <button class="btn" id="nmCancel">取消</button>
+      <button class="btn danger" id="nmClear" style="display:none">清除</button>
+      <button class="btn primary" id="nmSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 项目设置 / 分享 ============ -->
+<div class="modal" id="projModal">
+  <div class="card">
+    <h3>项目设置与分享</h3>
+    <div class="field"><label>项目名称</label><input type="text" id="psName"></div>
+    <div class="field"><label>分享描述</label><input type="text" id="psDesc" placeholder="微信分享时显示的说明"></div>
+    <div class="field"><label>项目图标（分享预览图，正方形最佳）</label><input type="file" id="psIcon" accept="image/*"></div>
+    <div class="field">
+      <label>分享链接（发给填写人，微信里会显示卡片与图标）</label>
+      <div class="sharebox">
+        <input type="text" id="psLink" readonly>
+        <button class="btn" id="psCopy">复制</button>
+      </div>
+      <div class="tip">分享链接形如 <span id="psLinkTip"></span>；未设置图标时，微信将显示系统默认封面。</div>
+    </div>
+    <div class="row">
+      <button class="btn danger" id="psDel">删除项目</button>
+      <button class="btn" id="psCancel">取消</button>
+      <button class="btn primary" id="psSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 修改管理员码 ============ -->
+<div class="modal" id="pwdModal">
+  <div class="card">
+    <h3>修改管理员码</h3>
+    <div class="field"><label>当前管理员码</label><input id="oldCode" type="password" autocomplete="current-password"></div>
+    <div class="field"><label>新管理员码（至少 4 位）</label><input id="newCode" type="text" autocomplete="new-password"></div>
+    <div class="row">
+      <button class="btn" id="pwdCancel">取消</button>
+      <button class="btn primary" id="pwdSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 头部 ============ -->
+<header>
+  <img class="logo" id="hdrIcon" src="/icon.svg" alt="">
+  <div class="titles">
+    <h1 id="hdrTitle">合影名单采集</h1>
+    <p id="hdrSub">通用模板 · 支持多项目</p>
+  </div>
+  <div class="spacer"></div>
+  <select id="projSel" style="display:none" title="切换项目"></select>
+  <button class="btn" id="newProjBtn" style="display:none">新建项目</button>
+  <button class="btn" id="projSetBtn" style="display:none">项目设置 / 分享</button>
+  <span class="badge" id="roleBadge">填写人：<b id="opName">-</b></span>
+  <button class="btn" id="pwdBtn" style="display:none">改管理员码</button>
+  <button class="btn" id="logoutBtn">退出登录</button>
+</header>
+
+<main>
+  <!-- 左：照片与标注 -->
+  <section class="panel left">
+    <h2>合影标注 <span class="count" id="modelStatus">人脸识别模型加载中…</span></h2>
+    <div class="toolbar" id="adminTools" style="display:none">
+      <button class="btn primary" id="uploadBtn">上传合影</button>
+      <input type="file" id="fileInput" accept="image/*" hidden>
+      <button class="btn" id="detectBtn" disabled>自动识别人脸</button>
+      <div class="seg" id="modeSeg">
+        <button class="btn" id="modeEditBtn" disabled>✥ 调整已有框</button>
+        <button class="btn add" id="modeAddBtn" disabled>＋ 新增人脸框</button>
+      </div>
+      <span class="ztip" id="editTip">选中后可拖动位置 / 拉角缩放（识别出的框同样可调）</span>
+      <button class="btn danger" id="delBtn" disabled>删除选中框</button>
+      <button class="btn" id="exportImgBtn" disabled>导出标注图</button>
+    </div>
+    <div class="zoombar" id="zoomTools" style="display:none">
+      <button class="btn" id="zoomOut">－</button>
+      <span class="zval" id="zoomLabel">100%</span>
+      <button class="btn" id="zoomIn">＋</button>
+      <button class="btn" id="zoomFit">适应宽度</button>
+      <span class="ztip" id="panTip">单指拖动移动照片 · 双指捏合缩放（电脑：Ctrl/⌘ + 滚轮）</span>
+    </div>
+    <div class="modetip" id="modeTip"></div>
+    <div id="stage">
+      <div class="placeholder" id="placeholder">
+        等待管理员上传集体合影<br>
+        <span style="font-size:12px">上传后系统自动同步到所有成员</span>
+      </div>
+      <div id="scroll"><canvas id="cv"></canvas></div>
+    </div>
+    <div id="statusBar"></div>
+  </section>
+
+  <!-- 右：名单 -->
+  <section class="panel right">
+    <h2>人员名单 <span class="count">按位置排序 · 实时同步</span></h2>
+    <div class="stats">
+      <div class="stat"><b id="stTotal">0</b><span>人脸总数</span></div>
+      <div class="stat"><b id="stNamed">0</b><span>已填写</span></div>
+      <div class="stat warn"><b id="stTodo">0</b><span>待填写</span></div>
+      <div class="stat warn"><b id="stPending">0</b><span>名单未填</span></div>
+    </div>
+    <div id="faceList"></div>
+
+    <!-- 管理员区 -->
+    <div id="adminPanel" style="display:none">
+      <div class="exports">
+        <button class="btn primary" id="exportCsvBtn">导出名单</button>
+        <button class="btn" id="exportPendingBtn">导出未填写人员</button>
+      </div>
+      <div class="exports">
+        <button class="btn" id="exportUnnamedBtn">导出待填写位置</button>
+        <button class="btn" id="exportLogBtn">导出操作日志</button>
+      </div>
+
+      <div class="sub-h">成员名单与验证码</div>
+      <textarea id="namesInput" placeholder="粘贴姓名批量生成验证码，每行一个或用逗号分隔&#10;张三&#10;李四"></textarea>
+      <div class="exports" style="margin-top:8px">
+        <button class="btn primary" id="genCodesBtn">批量生成</button>
+        <button class="btn" id="importBtn">导入名单</button>
+        <input type="file" id="importFile" accept=".csv,.txt,.tsv" hidden>
+        <button class="btn" id="tplBtn">下载导入模板</button>
+        <button class="btn" id="exportCodesBtn">导出验证码清单</button>
+      </div>
+      <p style="font-size:11px;color:#6b7a74;margin-top:6px">导入格式：CSV / TXT，第一列姓名、第二列验证码（留空自动生成）。允许重名，只要验证码不同即可各自填写。</p>
+      <div class="addrow">
+        <input id="addName" placeholder="新增姓名">
+        <input id="addCode" placeholder="验证码（可留空）" style="max-width:120px">
+        <button class="btn" id="addCodeBtn">新增</button>
+      </div>
+      <table id="codeTable">
+        <thead><tr><th style="width:38%">姓名</th><th style="width:26%">验证码</th><th style="width:24%">状态</th><th style="width:12%"></th></tr></thead>
+        <tbody id="codeTbody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+/* ================= 状态 ================= */
+var MODEL_URL = "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights";
+var state = {
+  token: sessionStorage.getItem("gpn_token") || null,
+  role: null, name: null,
+  project: null,            // {id,name,descr,hasIcon}
+  img: null, hasPhoto: false,
+  boxes: [], version: -1,
+  selected: null, addMode: false, modelReady: false
+};
+var drag = null, pollTimer = null, editing = false, zoom = 1;
+var $ = function(id){ return document.getElementById(id); };
+var cv = $("cv"), ctx = cv.getContext("2d");
+var params = new URLSearchParams(location.search);
+var presetProject = parseInt(params.get("p") || "0", 10);
+
+function toast(msg){
+  var t = $("toast"); t.textContent = msg; t.style.opacity = 1;
+  clearTimeout(t._tm); t._tm = setTimeout(function(){ t.style.opacity = 0; }, 2400);
+}
+function status(msg){ $("statusBar").textContent = msg; }
+function api(path, opts){
+  opts = opts || {};
+  opts.headers = Object.assign({ "x-token": state.token }, opts.headers || {});
+  if(opts.json){ opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(opts.json); delete opts.json; }
+  return fetch(path, opts).then(async function(r){
+    var ct = r.headers.get("content-type") || "";
+    var data = ct.indexOf("json") >= 0 ? await r.json() : null;
+    if(r.status === 401){ logout(); throw new Error("会话已过期，请重新登录"); }
+    if(!r.ok) throw new Error((data && data.error) || ("请求失败 " + r.status));
+    return data;
+  });
+}
+function iconUrl(p){
+  return p && p.id ? ("/api/project/" + p.id + "/icon") : "/icon.svg";
+}
+
+/* ================= 登录 ================= */
+var gateProject = null, gateAdmin = false;
+function loadPublicProjects(cb){
+  fetch("/api/projects/public").then(function(r){ return r.json(); }).then(function(d){
+    var list = $("gateProjList"); list.innerHTML = "";
+    var ps = d.projects || [];
+    if(!ps.length){
+      list.innerHTML = '<div style="font-size:13px;color:#6b7a74;padding:10px 0">还没有项目，管理员请先创建项目。</div>';
+      $("gateAdminBtn").className = "btn primary";
+    }else{
+      $("gateAdminBtn").className = "btn";
+    }
+    ps.forEach(function(p){
+      var div = document.createElement("div");
+      div.className = "proj-item";
+      div.innerHTML = '<img src="' + iconUrl(p) + '" alt=""><div><div class="pn"></div><div class="pd"></div></div><span class="go">进入 ›</span>';
+      div.querySelector(".pn").textContent = p.name;
+      div.querySelector(".pd").textContent = p.descr || ("项目 #" + p.id);
+      div.onclick = function(){ pickProject(p); };
+      list.appendChild(div);
+    });
+    if(cb) cb(ps);
+  }).catch(function(){ /* 忽略 */ });
+}
+function showStep2(){
+  $("gateStep1").style.display = "none";
+  $("gateStep2").style.display = "block";
+  $("gateErr").textContent = "";
+  setTimeout(function(){ $("gateName").focus(); }, 100);
+}
+function pickProject(p){
+  gateProject = p; gateAdmin = false;
+  var chip = $("gateProjChip");
+  chip.innerHTML = '<img src="' + iconUrl(p) + '" alt=""><span></span>';
+  chip.querySelector("span").textContent = p.name;
+  showStep2();
+}
+/* 管理员入口：不绑定项目，登录后进入项目管理页 */
+function pickAdmin(){
+  gateProject = null; gateAdmin = true;
+  var chip = $("gateProjChip");
+  chip.innerHTML = '<img src="/icon.svg" alt=""><span></span>';
+  chip.querySelector("span").textContent = "管理员入口 · 可新建 / 管理全部项目";
+  showStep2();
+}
+$("gateAdminBtn").onclick = pickAdmin;
+$("gateBack").onclick = function(e){
+  e.preventDefault();
+  $("gateStep2").style.display = "none";
+  $("gateStep1").style.display = "block";
+  gateProject = null; gateAdmin = false;
+};
+function tryLogin(){
+  var name = $("gateName").value.trim(), code = $("gateCode").value.trim();
+  if(!name){ $("gateErr").textContent = "请输入姓名"; return; }
+  if(!code){ $("gateErr").textContent = "请输入验证码"; return; }
+  $("gateBtn").disabled = true;
+  fetch("/api/login", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: name, code: code, projectId: gateAdmin ? 0 : (gateProject ? gateProject.id : (presetProject || 0)) })
+  }).then(async function(r){
+    var d = await r.json();
+    if(!r.ok){ $("gateErr").textContent = d.error || "登录失败"; return; }
+    state.token = d.token; sessionStorage.setItem("gpn_token", d.token);
+    try { localStorage.setItem("gpn_last_name", name); } catch (err) {}
+    state.project = d.project || null;
+    enter(d.role, d.name, d.needProject);
+  }).catch(function(){ $("gateErr").textContent = "网络错误"; })
+    .finally(function(){ $("gateBtn").disabled = false; });
+}
+$("gateBtn").onclick = tryLogin;
+$("gateCode").addEventListener("keydown", function(e){ if(e.key === "Enter") tryLogin(); });
+$("gateName").addEventListener("keydown", function(e){ if(e.key === "Enter") $("gateCode").focus(); });
+
+function enter(role, name, needProject){
+  state.role = role; state.name = name;
+  $("opName").textContent = name + (role === "admin" ? "（管理员）" : "");
+  $("roleBadge").classList.toggle("role-admin", role === "admin");
+  $("gate").style.display = "none";
+  if(role === "admin"){
+    $("adminTools").style.display = "flex";
+    $("adminPanel").style.display = "block";
+    $("pwdBtn").style.display = "inline-block";
+    $("projSel").style.display = "inline-block";
+    $("newProjBtn").style.display = "inline-block";
+    $("projSetBtn").style.display = "inline-block";
+  }
+  if(role === "admin" && (needProject || !state.project)){
+    showProjHome();
+    return;
+  }
+  applyProject();
+  refresh(true);
+  clearInterval(pollTimer);
+  pollTimer = setInterval(function(){ refresh(false); }, 4000);
+}
+function logout(){
+  sessionStorage.removeItem("gpn_token");
+  clearInterval(pollTimer);
+  location.reload();
+}
+$("logoutBtn").onclick = logout;
+
+/* ================= 项目（管理员） ================= */
+function showProjHome(){
+  $("projHome").style.display = "flex";
+  api("/api/projects").then(function(d){
+    var box = $("projList"); box.innerHTML = "";
+    var ps = d.projects || [];
+    if(!ps.length) box.innerHTML = '<div style="font-size:13px;color:#6b7a74;padding:6px 0 12px">暂无项目，请在下方新建。</div>';
+    ps.forEach(function(p){
+      var div = document.createElement("div");
+      div.className = "proj-item";
+      div.innerHTML = '<img src="' + iconUrl(p) + '" alt=""><div><div class="pn"></div><div class="pd"></div></div><span class="go">进入 ›</span>';
+      div.querySelector(".pn").textContent = p.name;
+      div.querySelector(".pd").textContent =
+        (p.descr ? p.descr + " · " : "") + "人脸 " + p.boxes + " · 已填 " + p.named + " · 名单 " + p.members;
+      div.onclick = function(){ openProject(p.id); };
+      box.appendChild(div);
+    });
+  }).catch(function(e){ toast(e.message); });
+}
+function openProject(id){
+  api("/api/session/project", { method: "POST", json: { projectId: id } }).then(function(d){
+    switchTo(d.project);
+  }).catch(function(e){ toast(e.message); });
+}
+function switchTo(p){
+  state.project = p;
+  state.boxes = []; state.img = null; state.hasPhoto = false;
+  state.version = -1; state.selected = null; state.addMode = false;
+  $("scroll").style.display = "none";
+  $("zoomTools").style.display = "none";
+  $("placeholder").style.display = "block";
+  $("modeEditBtn").classList.remove("on");
+  $("modeAddBtn").classList.remove("on");
+  $("projHome").style.display = "none";
+  applyProject();
+  if(state.role === "admin") loadCodes();
+  refresh(true);
+  clearInterval(pollTimer);
+  pollTimer = setInterval(function(){ refresh(false); }, 4000);
+}
+function applyProject(){
+  var p = state.project;
+  $("hdrTitle").textContent = p ? p.name : "合影名单采集";
+  $("hdrSub").textContent = p ? (p.descr || ("项目 #" + p.id + " · 合影名单采集")) : "通用模板 · 支持多项目";
+  $("hdrIcon").src = iconUrl(p);
+  document.title = p ? (p.name + " · 合影名单采集") : "合影名单采集";
+  if(state.role === "admin") loadProjSelect();
+}
+function loadProjSelect(){
+  api("/api/projects").then(function(d){
+    var sel = $("projSel"); sel.innerHTML = "";
+    (d.projects || []).forEach(function(p){
+      var o = document.createElement("option");
+      o.value = p.id; o.textContent = p.name;
+      if(state.project && p.id === state.project.id) o.selected = true;
+      sel.appendChild(o);
+    });
+    var o2 = document.createElement("option");
+    o2.value = ""; o2.textContent = "＋ 新建 / 管理项目…";
+    sel.appendChild(o2);
+  }).catch(function(){});
+}
+$("projSel").onchange = function(){
+  var v = this.value;
+  if(!v){ showProjHome(); this.value = state.project ? state.project.id : ""; return; }
+  openProject(parseInt(v, 10));
+};
+$("newProjBtn").onclick = function(){ showProjHome(); };
+
+function fileToDataUrl(file, cb){
+  var rd = new FileReader();
+  rd.onload = function(){ cb(rd.result); };
+  rd.readAsDataURL(file);
+}
+$("npCreate").onclick = function(){
+  var name = $("npName").value.trim();
+  if(!name){ toast("请填写项目名称"); return; }
+  var payload = { name: name, descr: $("npDesc").value.trim() };
+  var f = $("npIcon").files[0];
+  var go = function(){
+    api("/api/projects", { method: "POST", json: payload }).then(function(d){
+      toast("项目已创建");
+      $("npName").value = ""; $("npDesc").value = ""; $("npIcon").value = "";
+      openProject(d.id);
+    }).catch(function(e){ toast(e.message); });
+  };
+  if(f) fileToDataUrl(f, function(u){ payload.iconDataUrl = u; go(); }); else go();
+};
+
+/* 项目设置 / 分享 */
+$("projSetBtn").onclick = function(){
+  if(!state.project) { showProjHome(); return; }
+  $("psName").value = state.project.name;
+  $("psDesc").value = state.project.descr || "";
+  $("psIcon").value = "";
+  var link = location.origin + "/p/" + state.project.id;
+  $("psLink").value = link;
+  $("psLinkTip").textContent = location.origin + "/p/" + state.project.id;
+  $("projModal").style.display = "flex";
+};
+$("psCancel").onclick = function(){ $("projModal").style.display = "none"; };
+$("psCopy").onclick = function(){
+  var el = $("psLink");
+  el.select(); el.setSelectionRange(0, 99999);
+  try { document.execCommand("copy"); toast("链接已复制"); } catch (e) { toast("请手动复制"); }
+  if(navigator.clipboard) navigator.clipboard.writeText(el.value).then(function(){ toast("链接已复制"); });
+};
+$("psSave").onclick = function(){
+  var payload = { name: $("psName").value.trim(), descr: $("psDesc").value.trim() };
+  if(!payload.name){ toast("项目名称不能为空"); return; }
+  var f = $("psIcon").files[0];
+  var go = function(){
+    api("/api/projects/" + state.project.id, { method: "PUT", json: payload }).then(function(d){
+      state.project = d.project; applyProject();
+      $("projModal").style.display = "none";
+      toast("已保存");
+    }).catch(function(e){ toast(e.message); });
+  };
+  if(f) fileToDataUrl(f, function(u){ payload.iconDataUrl = u; go(); }); else go();
+};
+$("psDel").onclick = function(){
+  if(!confirm("删除项目「" + state.project.name + "」？照片、人脸框、名单、日志都会一并删除，且不可恢复。")) return;
+  api("/api/projects/" + state.project.id, { method: "DELETE" }).then(function(){
+    $("projModal").style.display = "none";
+    state.project = null;
+    showProjHome();
+  }).catch(function(e){ toast(e.message); });
+};
+
+/* ================= 状态同步 ================= */
+function refresh(force){
+  if(!state.token || (state.role === "admin" && !state.project)) return;
+  api("/api/state?v=" + (force ? -1 : state.version)).then(function(d){
+    if(d.same) return;
+    var hadPhoto = state.hasPhoto;
+    if(d.project) state.project = d.project;
+    state.version = d.version; state.boxes = d.boxes || []; state.hasPhoto = d.hasPhoto;
+    if(d.stats){
+      $("stPending").textContent = d.stats.pending;
+      $("stTotal").textContent = d.stats.total;
+      $("stNamed").textContent = d.stats.named;
+      $("stTodo").textContent = d.stats.todo;
+    }
+    if(d.hasPhoto && (!state.img || !hadPhoto)) loadPhoto();
+    if(!d.hasPhoto){
+      state.img = null;
+      $("scroll").style.display = "none";
+      $("zoomTools").style.display = "none";
+      $("placeholder").style.display = "block";
+    }
+    if(state.selected && !state.boxes.some(function(b){ return b.id === state.selected; })) state.selected = null;
+    draw();
+    if(!editing) renderList();
+  }).catch(function(e){ status(e.message); });
+}
+function loadPhoto(){
+  var img = new Image();
+  img.onload = function(){
+    state.img = img;
+    cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+    $("placeholder").style.display = "none";
+    $("scroll").style.display = "block";
+    $("zoomTools").style.display = "flex";
+    zoom = 1; applyZoom();
+    if(state.role === "admin"){
+      $("modeEditBtn").disabled = false; $("modeAddBtn").disabled = false;
+      $("exportImgBtn").disabled = false;
+      if(!$("modeEditBtn").classList.contains("on") && !$("modeAddBtn").classList.contains("on")) $("modeEditBtn").classList.add("on");
+      if(state.modelReady) $("detectBtn").disabled = false;
+    }
+    renderList();
+    setTimeout(function(){
+      if(state.role === "admin" || !state.boxes.length) return;
+      var ws = state.boxes.map(function(b){ return b.w; }).sort(function(a, b){ return a - b; });
+      var med = ws[Math.floor(ws.length / 2)], s1 = scale();
+      if(med > 0 && med * s1 < 70){
+        setZoom(Math.min(3, zoom * 70 / (med * s1)));
+        status("已自动放大：单指拖动照片找自己，点一下自己的脸即可填写姓名");
+      }else{
+        status("单指拖动照片 · 双指缩放 · 点一下自己的脸填写姓名");
+      }
+    }, 80);
+  };
+  fetch("/api/photo", { headers: { "x-token": state.token } })
+    .then(function(r){ if(!r.ok) throw new Error(); return r.blob(); })
+    .then(function(b){ img.src = URL.createObjectURL(b); })
+    .catch(function(){ status("照片加载失败"); });
+}
+
+/* ================= 缩放（全员可用） ================= */
+function applyZoom(){
+  if(!state.img) return;
+  var base = Math.max(200, $("stage").clientWidth - 4);
+  cv.style.width = Math.round(base * zoom) + "px";
+  $("zoomLabel").textContent = Math.round(zoom * 100) + "%";
+  draw();
+}
+function setZoom(z){
+  zoom = Math.min(6, Math.max(0.5, z));
+  applyZoom();
+}
+$("zoomIn").onclick = function(){ setZoom(zoom * 1.25); };
+$("zoomOut").onclick = function(){ setZoom(zoom / 1.25); };
+$("zoomFit").onclick = function(){ setZoom(1); };
+$("scroll").addEventListener("wheel", function(e){
+  if(!e.ctrlKey && !e.metaKey) return;
+  e.preventDefault();
+  setZoom(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+}, { passive: false });
+
+/* ================= 模型 ================= */
+if(typeof faceapi !== "undefined"){
+  faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL).then(function(){
+    state.modelReady = true;
+    $("modelStatus").textContent = "人脸识别模型已就绪";
+    if(state.role === "admin" && state.img) $("detectBtn").disabled = false;
+  }).catch(function(){
+    $("modelStatus").textContent = "模型加载失败（需联网），可手动框选";
+  });
+}else{
+  $("modelStatus").textContent = "识别库加载失败（需联网），可手动框选";
+}
+
+/* ================= 管理员：上传 / 识别 ================= */
+$("uploadBtn").onclick = function(){ $("fileInput").click(); };
+$("fileInput").onchange = function(e){
+  var f = e.target.files[0]; if(!f) return;
+  if(!confirm("上传新合影将清空现有人脸框与已填姓名，确定继续？")){ this.value = ""; return; }
+  var rd = new FileReader();
+  rd.onload = function(){
+    status("正在上传照片…");
+    api("/api/photo", { method: "POST", json: { dataUrl: rd.result } }).then(function(){
+      toast("合影已上传，请点击「自动识别人脸」");
+      state.img = null; refresh(true); this.value = "";
+    }.bind(this)).catch(function(e){ status(e.message); });
+  }.bind(this);
+  rd.readAsDataURL(f);
+};
+$("detectBtn").onclick = async function(){
+  if(!state.img || !state.modelReady) return;
+  $("detectBtn").disabled = true;
+  status("正在识别人脸，请稍候…");
+  try{
+    var dets = await faceapi.detectAllFaces(state.img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 }));
+    var boxes = dets.map(function(d){ return { x: d.box.x, y: d.box.y, w: d.box.width, h: d.box.height }; });
+    var r = await api("/api/boxes/bulk", { method: "POST", json: { boxes: boxes } });
+    status("识别完成：检出 " + boxes.length + " 张，新增 " + r.added + " 个框。遗漏请用「＋ 新增人脸框」补上。");
+    refresh(true);
+  }catch(e){ status("识别出错：" + e.message); }
+  $("detectBtn").disabled = false;
+};
+
+/* ================= 画布 ================= */
+function scale(){ var r = cv.getBoundingClientRect(); return r.width / cv.width; }
+function draw(){
+  if(!state.img) return;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(state.img, 0, 0);
+  var s = scale();
+  var sorted = sortedBoxes();
+  state.boxes.forEach(function(b){
+    var pos = sorted.find(function(it){ return it.box.id === b.id; });
+    var named = !!(b.name && b.name.trim());
+    var sel = b.id === state.selected;
+    var color = sel ? "#c07c10" : (named ? "#0b5c3f" : "#d43a3a");
+    ctx.lineWidth = (sel ? 3 : 2) / s;
+    ctx.strokeStyle = color;
+    if(!sel) ctx.setLineDash([6 / s, 5 / s]);
+    ctx.strokeRect(b.x, b.y, b.w, b.h);
+    ctx.setLineDash([]);
+    if(sel){
+      var label = (pos ? ("第" + pos.row + "排 第" + pos.col + "位") : "?") + (named ? " · " + b.name : "");
+      ctx.font = "bold " + (14 / s) + "px sans-serif";
+      var tw = ctx.measureText(label).width + 12 / s, th = 20 / s;
+      ctx.fillStyle = color;
+      ctx.fillRect(b.x, Math.max(0, b.y - th), tw, th);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(label, b.x + 6 / s, Math.max(0, b.y - th) + th - 6 / s);
+    }else{
+      var tag = pos ? (pos.row + "-" + pos.col) : "?";
+      ctx.font = "bold " + (10 / s) + "px sans-serif";
+      var tw2 = ctx.measureText(tag).width + 7 / s, th2 = 13 / s;
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = named ? "#0b5c3f" : "#d43a3a";
+      ctx.fillRect(b.x, b.y, tw2, th2);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#fff";
+      ctx.fillText(tag, b.x + 3.5 / s, b.y + th2 - 3.5 / s);
+    }
+    if(sel && state.role === "admin"){
+      var hs = 10 / s;
+      handlesOf(b).forEach(function(h){
+        ctx.fillStyle = "#fff"; ctx.strokeStyle = "#c07c10"; ctx.lineWidth = 2 / s;
+        ctx.fillRect(h.x - hs / 2, h.y - hs / 2, hs, hs);
+        ctx.strokeRect(h.x - hs / 2, h.y - hs / 2, hs, hs);
+      });
+    }
+  });
+  if(drag && drag.type === "draw"){
+    var r = rectFrom(drag.sx, drag.sy, drag.cx, drag.cy);
+    ctx.lineWidth = 2 / s; ctx.setLineDash([6 / s, 4 / s]);
+    ctx.strokeStyle = "#c07c10"; ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.setLineDash([]);
+  }
+}
+function handlesOf(b){
+  return [
+    { x: b.x, y: b.y, k: "tl" }, { x: b.x + b.w, y: b.y, k: "tr" },
+    { x: b.x, y: b.y + b.h, k: "bl" }, { x: b.x + b.w, y: b.y + b.h, k: "br" }
+  ];
+}
+function rectFrom(x1, y1, x2, y2){
+  return { x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1) };
+}
+function sortedBoxes(){
+  var arr = state.boxes.slice().sort(function(a, b){ return (a.y + a.h / 2) - (b.y + b.h / 2); });
+  if(!arr.length) return [];
+  var hs = arr.map(function(b){ return b.h; }).sort(function(a, b){ return a - b; });
+  var medH = hs[Math.floor(hs.length / 2)];
+  var rows = [];
+  arr.forEach(function(b){
+    var cy = b.y + b.h / 2;
+    var row = rows.find(function(r){ return Math.abs(r.cy - cy) < medH * 0.6; });
+    if(row){ row.items.push(b); row.cy = (row.cy * (row.items.length - 1) + cy) / row.items.length; }
+    else rows.push({ cy: cy, items: [b] });
+  });
+  var out = [];
+  rows.forEach(function(r, ri){
+    r.items.sort(function(a, b){ return a.x - b.x; });
+    r.items.forEach(function(b, bi){ out.push({ box: b, row: ri + 1, col: bi + 1 }); });
+  });
+  return out;
+}
+window.addEventListener("resize", function(){ applyZoom(); });
+
+function toImg(e){
+  var r = cv.getBoundingClientRect(), s = scale();
+  return { x: (e.clientX - r.left) / s, y: (e.clientY - r.top) / s };
+}
+var pts = {}, pinch = null, moved = 0, touchMode = ((navigator.maxTouchPoints || 0) > 0);
+function hitBox(p){
+  for(var j = state.boxes.length - 1; j >= 0; j--){
+    var b = state.boxes[j];
+    if(p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) return b;
+  }
+  return null;
+}
+/* ---------- 触屏友好：单指平移 / 双指缩放 / 点击才选中 ---------- */
+var stage = $("scroll");
+var downT = 0;
+function centerOnBox(b){
+  var sc = stage;
+  sc.scrollLeft = b.x * scale() + b.w * scale() / 2 - sc.clientWidth / 2;
+  sc.scrollTop  = b.y * scale() + b.h * scale() / 2 - sc.clientHeight / 2;
+}
+function panStage(dx, dy){
+  stage.scrollLeft -= dx; stage.scrollTop -= dy;
+}
+stage.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+stage.addEventListener("pointerdown", function(e){
+  if(!state.img) return;
+  if(e.pointerType === "mouse" && e.button !== 0) return;
+  e.preventDefault();
+  try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+  pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+  downT = Date.now();
+  var ids = Object.keys(pts);
+  if(ids.length >= 2){
+    var dx0 = pts[ids[0]].x - pts[ids[1]].x, dy0 = pts[ids[0]].y - pts[ids[1]].y;
+    pinch = { d: Math.hypot(dx0, dy0), zoom: zoom, mx: (pts[ids[0]].x + pts[ids[1]].x) / 2, my: (pts[ids[0]].y + pts[ids[1]].y) / 2 };
+    drag = null;
+    return;
+  }
+  moved = 0;
+  var p = toImg(e), s = scale(), hs = (touchMode ? 26 : 12) / s;
+  var admin = state.role === "admin";
+  var sel = state.boxes.find(function(b){ return b.id === state.selected; });
+  if(admin && sel && !state.addMode){
+    var hl = handlesOf(sel);
+    for(var i = 0; i < hl.length; i++){
+      if(Math.abs(p.x - hl[i].x) < hs && Math.abs(p.y - hl[i].y) < hs){
+        drag = { type: "resize", handle: hl[i].k, orig: Object.assign({}, sel), sx: e.clientX, sy: e.clientY };
+        return;
+      }
+    }
+  }
+  var b = hitBox(p);
+  if(admin && state.addMode){
+    if(b){
+      state.selected = b.id; $("delBtn").disabled = false;
+      modeTip("add", "当前是<b>新增模式</b>，点中的已有框只会被选中。要拖动 / 缩放它，请点上方 <b>✥ 调整已有框</b> 切回去。", true);
+    }
+    drag = { type: "draw", sx: p.x, sy: p.y, cx: p.x, cy: p.y };
+    draw(); renderList(); return;
+  }
+  if(admin && b){
+    var wasSel = state.selected === b.id;
+    state.selected = b.id; $("delBtn").disabled = false;
+    drag = { type: "move", dx: p.x - b.x, dy: p.y - b.y, box: b, sx: e.clientX, sy: e.clientY, wasSel: wasSel };
+    draw(); renderList(); return;
+  }
+  drag = { type: "pan", box: b, sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY };
+  cv.classList.add("panning");
+});
+window.addEventListener("pointermove", function(e){
+  if(pts[e.pointerId]) pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+  var ids = Object.keys(pts);
+  if(pinch && ids.length >= 2){
+    var dx1 = pts[ids[0]].x - pts[ids[1]].x, dy1 = pts[ids[0]].y - pts[ids[1]].y;
+    var d = Math.hypot(dx1, dy1);
+    var mx = (pts[ids[0]].x + pts[ids[1]].x) / 2, my = (pts[ids[0]].y + pts[ids[1]].y) / 2;
+    if(pinch.d > 0) setZoom(pinch.zoom * d / pinch.d);
+    panStage(mx - pinch.mx, my - pinch.my);
+    pinch.mx = mx; pinch.my = my;
+    return;
+  }
+  if(!drag) return;
+  moved = Math.max(moved, Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy));
+  if(drag.type === "pan"){
+    panStage(e.clientX - drag.lx, e.clientY - drag.ly);
+    drag.lx = e.clientX; drag.ly = e.clientY;
+    return;
+  }
+  var p = toImg(e);
+  if(drag.type === "move"){
+    drag.box.x = Math.max(0, Math.min(p.x - drag.dx, cv.width - drag.box.w));
+    drag.box.y = Math.max(0, Math.min(p.y - drag.dy, cv.height - drag.box.h));
+  }else if(drag.type === "resize"){
+    var b = state.boxes.find(function(x){ return x.id === state.selected; });
+    if(!b){ drag = null; return; }
+    var o = drag.orig, r;
+    if(drag.handle === "tl") r = rectFrom(p.x, p.y, o.x + o.w, o.y + o.h);
+    if(drag.handle === "tr") r = rectFrom(p.x, o.y + o.h, o.x + o.w, p.y);
+    if(drag.handle === "bl") r = rectFrom(p.x, o.y, o.x + o.w, p.y);
+    if(drag.handle === "br") r = rectFrom(o.x, o.y, p.x, p.y);
+    if(r.w > 10 && r.h > 10){ b.x = r.x; b.y = r.y; b.w = r.w; b.h = r.h; }
+  }else if(drag.type === "draw"){
+    drag.cx = p.x; drag.cy = p.y;
+  }
+  draw();
+});
+function endPointer(e){
+  delete pts[e.pointerId];
+  cv.classList.remove("panning");
+  if(Object.keys(pts).length < 2) pinch = null;
+  if(!drag) return;
+  var d = drag; drag = null;
+  var tapPx = touchMode ? 14 : 5;
+  var tapped = moved < tapPx && (Date.now() - downT) < 800;
+  if(d.type === "pan"){
+    if(tapped){
+      if(d.box){
+        state.selected = d.box.id;
+        draw(); renderList();
+        if(canEdit(d.box)) openNameModal(d.box);
+        else toast("该位置已由 " + (d.box.by || "他人") + " 填写，如需修改请联系管理员");
+      }else if(state.role === "admin"){
+        state.selected = null; $("delBtn").disabled = true;
+        draw(); renderList();
+      }
+    }
+    return;
+  }
+  if(d.type === "draw"){
+    var r = rectFrom(d.sx, d.sy, d.cx, d.cy);
+    if(r.w > 15 && r.h > 15){
+      api("/api/box", { method: "POST", json: r }).then(function(res){
+        state.selected = res.id; $("delBtn").disabled = false;
+        state.addedCount = (state.addedCount || 0) + 1;
+        refresh(true);
+        modeTip("add", "已新增 <b>" + state.addedCount + "</b> 个人脸框。继续在空白处拖动可继续添加；要修改已有框，点 <b>✥ 调整已有框</b> 或按 <b>Esc</b> 返回。", true);
+      }).catch(function(err){ toast(err.message); });
+    }else{
+      modeTip("add", "框太小，未添加。在空白处按住拖动，框住一整张脸再松手。", true);
+    }
+  }else if(d.type === "move" || d.type === "resize"){
+    var b = state.boxes.find(function(x){ return x.id === state.selected; });
+    if(b){
+      if(moved > 2){
+        api("/api/box/" + b.id, { method: "PUT", json: { x: b.x, y: b.y, w: b.w, h: b.h } })
+          .catch(function(err){ toast(err.message); });
+      }
+      if(tapped && d.wasSel) openNameModal(b);
+    }
+  }
+  draw();
+}
+window.addEventListener("pointerup", endPointer);
+window.addEventListener("pointercancel", endPointer);
+
+/* ================= 管理员：框操作 ================= */
+function modeTip(kind, html, withBtn){
+  var el = $("modeTip");
+  if(!kind){ el.className = "modetip"; el.innerHTML = ""; return; }
+  el.className = "modetip show " + kind;
+  el.innerHTML = "<span>" + html + "</span>" +
+    (withBtn ? "<button class='mt-close' id='mtBack'>返回调整</button>" : "");
+  if(withBtn) $("mtBack").onclick = function(){ setMode("edit"); };
+}
+function setMode(m){
+  if(state.role !== "admin") return;
+  state.addMode = (m === "add");
+  $("modeEditBtn").classList.toggle("on", !state.addMode);
+  $("modeAddBtn").classList.toggle("on", state.addMode);
+  $("editTip").style.display = state.addMode ? "none" : "";
+  cv.classList.toggle("addmode", state.addMode);
+  if(state.addMode){
+    state.selected = null; $("delBtn").disabled = true;
+    modeTip("add", "<b>新增模式</b>：在照片空白处按住拖动画出新的人脸框，可连续添加。要移动或缩放已有框，点 <b>✥ 调整已有框</b> 或按 <b>Esc</b> 返回。", true);
+    status("新增模式：拖动框出遗漏的人脸");
+  }else{
+    var sel = state.boxes.find(function(b){ return b.id === state.selected; });
+    if(sel){
+      var pos = sortedBoxes().find(function(it){ return it.box.id === sel.id; });
+      var who = pos ? ("第" + pos.row + "排·第" + pos.col + "位") : "该人脸框";
+      modeTip("sel", "已选中 <b>" + who + "</b>：按住框内拖动可移动位置，拖四个角的小方块可缩放大小，按 <b>Delete</b> 删除。", false);
+      status("调整模式：" + who + " 可拖动 / 缩放");
+    }else{
+      modeTip(null);
+      status("调整模式：点选任意人脸框即可拖动或缩放");
+    }
+  }
+  draw(); renderList();
+}
+$("modeEditBtn").onclick = function(){ setMode("edit"); };
+$("modeAddBtn").onclick = function(){ setMode("add"); };
+window.addEventListener("keydown", function(e){
+  if(e.key === "Escape"){
+    var vis = ["nameModal", "pwdModal", "projModal"].filter(function(id){ return $(id).style.display === "flex"; });
+    if(vis.length){ vis.forEach(function(id){ $(id).style.display = "none"; }); return; }
+    if(state.addMode){ setMode("edit"); return; }
+    if(state.selected != null){ state.selected = null; $("delBtn").disabled = true; draw(); renderList(); }
+  }
+  if((e.key === "Delete" || e.key === "Backspace") && state.role === "admin" && state.selected != null){
+    var tag = (document.activeElement && document.activeElement.tagName) || "";
+    if(tag === "INPUT" || tag === "TEXTAREA") return;
+    e.preventDefault(); $("delBtn").click();
+  }
+});
+$("delBtn").onclick = function(){
+  if(state.selected == null) return;
+  if(!confirm("删除选中的人脸框？")) return;
+  api("/api/box/" + state.selected, { method: "DELETE" }).then(function(){
+    state.selected = null; $("delBtn").disabled = true;
+    refresh(true);
+  }).catch(function(e){ toast(e.message); });
+};
+$("exportImgBtn").onclick = function(){
+  if(!state.img) return;
+  draw();
+  cv.toBlob(function(blob){
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = (state.project ? state.project.name : "合影") + "_标注图.png"; a.click();
+    URL.revokeObjectURL(a.href);
+  });
+};
+
+/* ================= 名单渲染 ================= */
+function canEdit(b){
+  if(state.role === "admin") return true;
+  return !b.name || b.by === state.name;
+}
+function openNameModal(b){
+  var pos = sortedBoxes().find(function(it){ return it.box.id === b.id; });
+  $("nmTitle").textContent = pos ? ("第 " + pos.row + " 排 · 第 " + pos.col + " 位") : "填写姓名";
+  var c = $("nmFace"), cx = c.getContext("2d");
+  cx.clearRect(0, 0, 220, 220);
+  if(state.img){
+    var pad = b.w * 0.45;
+    var sx = Math.max(0, b.x - pad), sy = Math.max(0, b.y - pad);
+    var sw = Math.min(state.img.naturalWidth - sx, b.w + pad * 2);
+    var sh = Math.min(state.img.naturalHeight - sy, b.h + pad * 2);
+    cx.drawImage(state.img, sx, sy, sw, sh, 0, 0, 220, 220);
+  }
+  var editable = canEdit(b);
+  $("nmInput").disabled = !editable;
+  $("nmInput").value = b.name || "";
+  $("nmSave").style.display = editable ? "block" : "none";
+  $("nmClear").style.display = (editable && b.name) ? "block" : "none";
+  $("nmCancel").textContent = editable ? "取消" : "关闭";
+  $("nmBy").textContent = b.by
+    ? ("已由「" + b.by + "」填写 · " + b.at)
+    : (editable ? "请填写姓名后保存" : "该位置由他人填写，如需修改请联系管理员");
+  $("nameModal").dataset.id = b.id;
+  $("nameModal").style.display = "flex";
+  if(editable) setTimeout(function(){ $("nmInput").focus(); $("nmInput").select(); }, 150);
+}
+$("nmCancel").onclick = function(){ $("nameModal").style.display = "none"; };
+$("nmSave").onclick = function(){
+  var id = parseInt($("nameModal").dataset.id, 10);
+  var v = $("nmInput").value.trim();
+  api("/api/box/" + id + "/name", { method: "PUT", json: { name: v } }).then(function(){
+    $("nameModal").style.display = "none";
+    toast(v ? "已保存：" + v : "已清除");
+    refresh(true);
+  }).catch(function(e){ toast(e.message); });
+};
+$("nmClear").onclick = function(){ $("nmInput").value = ""; $("nmSave").click(); };
+$("nmInput").addEventListener("keydown", function(e){ if(e.key === "Enter") $("nmSave").click(); });
+function renderList(){
+  var sorted = sortedBoxes();
+  var named = state.boxes.filter(function(b){ return (b.name || "").trim(); }).length;
+  $("stTotal").textContent = state.boxes.length;
+  $("stNamed").textContent = named;
+  $("stTodo").textContent = state.boxes.length - named;
+  var list = $("faceList"); list.innerHTML = "";
+  var admin = state.role === "admin";
+  sorted.forEach(function(item){
+    var b = item.box;
+    var div = document.createElement("div");
+    div.className = "face-item" + (b.id === state.selected ? " selected" : "");
+    var thumb = document.createElement("canvas");
+    thumb.width = 104; thumb.height = 104; thumb.className = "thumb";
+    if(state.img){
+      var pad = b.w * 0.25;
+      var sx = Math.max(0, b.x - pad), sy = Math.max(0, b.y - pad);
+      var sw = Math.min(state.img.naturalWidth - sx, b.w + pad * 2);
+      var sh = Math.min(state.img.naturalHeight - sy, b.h + pad * 2);
+      thumb.getContext("2d").drawImage(state.img, sx, sy, sw, sh, 0, 0, 104, 104);
+    }
+    var meta = document.createElement("div"); meta.className = "meta";
+    var num = document.createElement("div"); num.className = "num";
+    num.textContent = "第 " + item.row + " 排 · 第 " + item.col + " 位";
+    var input = document.createElement("input");
+    input.className = "face-name";
+    input.placeholder = canEdit(b) ? "点击输入姓名" : "已由他人填写";
+    input.value = b.name || "";
+    input.disabled = !canEdit(b);
+    input.addEventListener("click", function(e){ e.stopPropagation(); });
+    input.addEventListener("focus", function(){ editing = true; });
+    input.addEventListener("blur", function(){ editing = false; });
+    input.addEventListener("change", function(){
+      var v = input.value.trim();
+      if(v === (b.name || "")) return;
+      api("/api/box/" + b.id + "/name", { method: "PUT", json: { name: v } }).then(function(){
+        toast(v ? "已保存：" + v : "已清除");
+        refresh(true);
+      }).catch(function(e){
+        toast(e.message); input.value = b.name || ""; refresh(true);
+      });
+    });
+    var by = document.createElement("div"); by.className = "by";
+    by.textContent = b.by ? ("填写人：" + b.by + " · " + b.at) : "尚未填写";
+    meta.appendChild(num); meta.appendChild(input); meta.appendChild(by);
+    div.appendChild(thumb); div.appendChild(meta);
+    if(admin){
+      var del = document.createElement("button");
+      del.className = "del"; del.title = "删除此框"; del.textContent = "×";
+      del.addEventListener("click", function(e){
+        e.stopPropagation();
+        if(!confirm("删除该人脸框（含姓名）？")) return;
+        api("/api/box/" + b.id, { method: "DELETE" }).then(function(){ refresh(true); })
+          .catch(function(err){ toast(err.message); });
+      });
+      div.appendChild(del);
+    }
+    div.addEventListener("click", function(){
+      state.selected = b.id; $("delBtn").disabled = !admin;
+      centerOnBox(b);
+      draw(); renderList();
+      if(!admin){ openNameModal(b); return; }
+      setTimeout(function(){ input.focus(); }, 50);
+    });
+    list.appendChild(div);
+  });
+}
+
+/* ================= 导出（管理员） ================= */
+function openExport(path){
+  fetch(path, { headers: { "x-token": state.token } }).then(function(r){
+    if(!r.ok) throw new Error("导出失败");
+    var cd = r.headers.get("Content-Disposition") || "";
+    var m = cd.match(/filename\*=UTF-8''([^;]+)/);
+    return r.blob().then(function(b){ return { blob: b, name: m ? decodeURIComponent(m[1]) : "export.csv" }; });
+  }).then(function(x){
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(x.blob); a.download = x.name; a.click();
+    URL.revokeObjectURL(a.href);
+  }).catch(function(e){ toast(e.message); });
+}
+$("exportCsvBtn").onclick = function(){ openExport("/api/export/names"); };
+$("exportPendingBtn").onclick = function(){ openExport("/api/export/pending"); };
+$("exportUnnamedBtn").onclick = function(){ openExport("/api/export/unnamed"); };
+$("exportLogBtn").onclick = function(){ openExport("/api/export/logs"); };
+$("exportCodesBtn").onclick = function(){ openExport("/api/export/codes"); };
+$("tplBtn").onclick = function(){
+  var a = document.createElement("a");
+  a.href = "/api/template"; a.download = "名单导入模板.csv"; a.click();
+};
+
+/* ================= 名单与验证码（管理员） ================= */
+function loadCodes(){
+  api("/api/codes").then(function(d){
+    var tb = $("codeTbody"); tb.innerHTML = "";
+    (d.codes || []).forEach(function(c){
+      var tr = document.createElement("tr");
+
+      var tdName = document.createElement("td");
+      var inName = document.createElement("input");
+      inName.type = "text"; inName.value = c.name || "";
+      inName.addEventListener("change", function(){
+        var v = inName.value.trim();
+        if(!v || v === (c.name || "")) { inName.value = c.name || ""; return; }
+        api("/api/codes/" + c.id, { method: "PUT", json: { name: v } })
+          .then(function(){ toast("已修改"); loadCodes(); refresh(true); })
+          .catch(function(e){ toast(e.message); loadCodes(); });
+      });
+      tdName.appendChild(inName);
+
+      var tdCode = document.createElement("td");
+      var inCode = document.createElement("input");
+      inCode.type = "text"; inCode.className = "code"; inCode.value = c.code || "";
+      inCode.addEventListener("change", function(){
+        var v = inCode.value.trim();
+        if(!v || v === c.code) { inCode.value = c.code; return; }
+        api("/api/codes/" + c.id, { method: "PUT", json: { code: v } })
+          .then(function(r){ toast("验证码已改为 " + r.code); loadCodes(); })
+          .catch(function(e){ toast(e.message); loadCodes(); });
+      });
+      tdCode.appendChild(inCode);
+
+      var tdSt = document.createElement("td");
+      tdSt.innerHTML = c.used_by ? '<span class="used">已用 · ' + escapeHtml(c.used_by) + "</span>" : '<span class="unused">未使用</span>';
+
+      var tdOp = document.createElement("td");
+      var btn = document.createElement("button");
+      btn.textContent = "删除";
+      btn.onclick = function(){
+        if(!confirm("删除「" + (c.name || "该成员") + "」的验证码？")) return;
+        api("/api/codes/" + c.id, { method: "DELETE" }).then(function(){ loadCodes(); refresh(true); })
+          .catch(function(e){ toast(e.message); });
+      };
+      tdOp.appendChild(btn);
+
+      tr.appendChild(tdName); tr.appendChild(tdCode); tr.appendChild(tdSt); tr.appendChild(tdOp);
+      tb.appendChild(tr);
+    });
+  }).catch(function(e){ toast(e.message); });
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+$("addCodeBtn").onclick = function(){
+  var nm = $("addName").value.trim();
+  if(!nm){ toast("请填写姓名"); return; }
+  api("/api/codes/add", { method: "POST", json: { name: nm, code: $("addCode").value.trim() } }).then(function(){
+    $("addName").value = ""; $("addCode").value = "";
+    toast("已新增");
+    loadCodes(); refresh(true);
+  }).catch(function(e){ toast(e.message); });
+};
+$("addCode").addEventListener("keydown", function(e){ if(e.key === "Enter") $("addCodeBtn").click(); });
+$("addName").addEventListener("keydown", function(e){ if(e.key === "Enter") $("addCodeBtn").click(); });
+function parseRows(text){
+  var lines = String(text).replace(/^﻿/, "").split(/\r?\n/).filter(function(l){ return l.trim(); });
+  var out = [];
+  lines.forEach(function(line, i){
+    var cells = line.split(/[,，;；\t]+/).map(function(s){ return s.trim(); }).filter(function(c){ return c !== ""; });
+    if(!cells.length) return;
+    if(i === 0 && /^(姓名|name)$/i.test(cells[0])) return;
+    out.push({ name: cells[0], code: cells[1] || "" });
+  });
+  return out;
+}
+$("importBtn").onclick = function(){ $("importFile").click(); };
+$("importFile").onchange = function(e){
+  var f = e.target.files[0]; if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){
+    var rows = parseRows(rd.result);
+    if(!rows.length){ toast("未解析到有效数据，请检查文件格式"); e.target.value = ""; return; }
+    var preview = rows.slice(0, 3).map(function(r){ return r.name + (r.code ? "/" + r.code : ""); }).join("、");
+    if(!confirm("解析到 " + rows.length + " 条（例：" + preview + "…）。\n确定导入？允许重名，每人各自一个验证码。")){ e.target.value = ""; return; }
+    api("/api/codes/import", { method: "POST", json: { rows: rows } }).then(function(d){
+      toast("导入完成：新增 " + d.created + " 条" + (d.skipped.length ? "，有 " + d.skipped.length + " 条验证码冲突已自动换码" : ""));
+      loadCodes(); refresh(true);
+    }).catch(function(err){ toast(err.message); });
+    e.target.value = "";
+  };
+  rd.readAsText(f, "utf-8");
+};
+$("genCodesBtn").onclick = function(){
+  var names = $("namesInput").value.trim();
+  if(!names){ toast("请先粘贴成员姓名"); return; }
+  api("/api/codes", { method: "POST", json: { names: names } }).then(function(d){
+    toast("已生成 " + d.created.length + " 个验证码");
+    $("namesInput").value = "";
+    loadCodes(); refresh(true);
+  }).catch(function(e){ toast(e.message); });
+};
+
+/* ================= 修改管理员码 ================= */
+$("pwdBtn").onclick = function(){ $("pwdModal").style.display = "flex"; };
+$("pwdCancel").onclick = function(){ $("pwdModal").style.display = "none"; };
+$("pwdSave").onclick = function(){
+  api("/api/admin/password", { method: "POST", json: { oldCode: $("oldCode").value, newCode: $("newCode").value } })
+    .then(function(){
+      $("pwdModal").style.display = "none";
+      $("oldCode").value = ""; $("newCode").value = "";
+      toast("管理员码已更新");
+    }).catch(function(e){ toast(e.message); });
+};
+
+/* ================= 启动 ================= */
+if(state.token){
+  api("/api/state?v=-1").then(function(d){
+    if(d.noProject){ enter(d.role, d.name, true); return; }
+    state.project = d.project || null;
+    enter(d.role, d.name, false);
+  }).catch(function(){
+    $("gate").style.display = "flex";
+    loadPublicProjects(function(ps){
+      if(presetProject){
+        var hit = ps.find(function(p){ return p.id === presetProject; });
+        if(hit){ pickProject(hit); return; }
+      }
+      if(!ps.length) pickAdmin();   // 全新部署：直接进入管理员登录
+    });
+  });
+}else{
+  $("gate").style.display = "flex";
+  try {
+    var last = localStorage.getItem("gpn_last_name");
+    if(last && !$("gateName").value) $("gateName").value = last;
+  } catch (err) {}
+  loadPublicProjects(function(ps){
+    if(presetProject){
+      var hit = ps.find(function(p){ return p.id === presetProject; });
+      if(hit){ pickProject(hit); return; }
+    }
+    if(!ps.length) pickAdmin();   // 全新部署：直接进入管理员登录
+  });
+  setTimeout(function(){ if(!gateProject && !gateAdmin) $("gateName").focus(); }, 200);
+}
+})();
+</script>
+</body>
+</html>
