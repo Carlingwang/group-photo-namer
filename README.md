@@ -92,7 +92,7 @@
 ### 本地运行
 
 ```bash
-git clone https://github.com/<your-github-username>/group-photo-namer.git
+git clone https://github.com/Carlingwang/group-photo-namer.git
 cd group-photo-namer
 node --experimental-sqlite server.js
 ```
